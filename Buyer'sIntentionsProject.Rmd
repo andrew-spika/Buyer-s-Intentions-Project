@@ -1,0 +1,431 @@
+---
+title: "Internet Users' Intentions"
+author: "Andrew Spika"
+output: word_document
+always_allow_html: true
+---
+
+```{r Packages, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(epitools)
+library(gridExtra)
+library(vcd)
+library(knitr)
+library(dplyr)
+library(GGally)
+library(kableExtra)
+library(MASS)
+```
+
+```{r Data Read In, echo=FALSE, warning=FALSE, message=FALSE}
+shop = read.csv("online_shoppers_intention.csv")
+#summary(shop)
+```
+
+### Description of Data
+
+The desired goal of this analysis is predict whether an internet user will make a purchase online. The data used is tracking data of 12,330 online sessions by individual internet users over a 1-year period that resulted in either a purchase or no purchase. There are 18 total variables in the data set, the response variable is 'Revenue' and is a logical variable identifying TRUE for a purchase being made and FALSE for no purchase being made. For the purpose of clarity, the 'Revenue' variable will be referred to as the 'Purchase Made' variable for the duration of this paper. With this quantity of variables it is important to identify possible correlations between the predictor variables, distributions of the quantitative predictor variables with possible affects of categorical variables on these distributions, and eventually significance of each variable in the desired predictive model.
+
+The 17 predictor variables in the data set include:
+
+| Variable | Description |
+|-------------------------------|-----------------------------------------|
+| Administrative | Number of times Administrative pages were visited during the session |
+| Administrative_Duration | Duration of time Administrative pages were visited during the session |
+| Informational | Number of times Information pages were visited during the session |
+| Informational_Duration | Duration of time Administrative pages were visited during the session |
+| ProductRelated | Number of times Product Related pages were visited during the session |
+| ProductRelated_Duration | Duration of time Product Related pages were visited during the session |
+| BounceRates | Proportion of times a user visits a specific web page and then "bounces" or leaves the page without triggering any other requests on the server during a session |
+| ExitRates | Proportion of times a specific web page was viewed as the last page during a session |
+| PageValues | Average value for a web page that a user visited before completing an e-commerce transaction |
+| SpecialDay | Indicated closeness of the session to a specific special day or holiday (e.g. Mother's Day, Valentine's Day) |
+| VisitorType | Whether a user is a returning visitor of a page or a new visitor |
+| Weekend | Whether the user is on their internet session during the weekend or not |
+| OperatingSystems | Operating systems used during the internet session |
+| Browser | Browser used during the internet session |
+| Region | Region internet session user was in |
+| TrafficType | The type of internet traffic experienced during the session |
+| Month | The month in which the session occured |
+
+```{r Desired Vars, echo=FALSE, message=FALSE, warning=FALSE}
+shop_2 = shop
+shop_2$VisitorType = as.factor(shop_2$VisitorType)
+shop_2$Month = as.factor(shop_2$Month)
+shop_2$Browser = as.factor(shop_2$Browser)
+shop_2$Region = as.factor(shop_2$Region)
+shop_2$TrafficType = as.factor(shop_2$TrafficType)
+shop_2$OperatingSystems = as.factor(shop_2$OperatingSystems)
+```
+
+### Data Exploration
+
+It is important to explore the possible predictor variables in the data set before using them to model whether a web session ends in a purchase or not. Ideal numerical predictor variables would not be highly skewed in any one direction, have no outliers, and would not be highly correlated with each other. Ideal categorical variables would have proper encoding and would not be highly correlated with each other. It is also important to identify potential outliers and deal with them accordingly.
+
+```{r Numerical Correlations, include=FALSE}
+numerical_vars = shop_2 %>% dplyr::select(c("Administrative", "Administrative_Duration", "Informational", "Informational_Duration", "ProductRelated", "ProductRelated_Duration", "BounceRates", "ExitRates", "PageValues", "SpecialDay"))
+# Calculate the correlation matrix, round to 4 decimal places
+cor_matrix <- round(cor(numerical_vars, use = "complete.obs"), 4)
+
+# Display the correlation matrix with kable
+kable(cor_matrix, caption = "Correlation Matrix of Numerical Variables") %>%
+  kable_styling(full_width = F, position = "center")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Load ggplot2 library
+library(ggplot2)
+library(gridExtra) # For arranging plots in a grid
+
+admin_plot_df = shop_2 %>% filter(Administrative_Duration > 0)
+info_plot_df = shop_2 %>% filter(Informational_Duration > 0)
+product_plot_df = shop_2 %>% filter(ProductRelated_Duration > 0)
+
+admin_y_ind = runif(nrow(admin_plot_df), 0, 1)
+info_y_ind = runif(nrow(info_plot_df), 0, 1)
+product_y_ind = runif(nrow(product_plot_df), 0, 1)
+
+# Create individual dot plots for each variable
+plot_admin <- ggplot(admin_plot_df) +
+  geom_point(aes(x = Administrative_Duration, y = admin_y_ind), color="darkblue") +
+  theme_gray() +
+  labs(x="Duration") +
+  theme(axis.title.y = element_blank(),  # Remove y-axis label
+        axis.text.y = element_blank(),   # Remove y-axis numbers
+        axis.ticks.y = element_blank()) + # Remove y-axis ticks
+  ggtitle("Administrative")
+
+plot_info <- ggplot(info_plot_df) +
+  geom_point(aes(x = Informational_Duration, y = info_y_ind), color="darkgreen") +
+  theme_gray() +
+  labs(x="Duration") +
+  theme(axis.title.y = element_blank(),  # Remove y-axis label
+        axis.text.y = element_blank(),   # Remove y-axis numbers
+        axis.ticks.y = element_blank()) + # Remove y-axis ticks
+  ggtitle("Informational")
+
+plot_product <- ggplot(product_plot_df) +
+  geom_point(aes(x = ProductRelated_Duration, y = product_y_ind), color="black") +
+  theme_gray() +
+  labs(x="Duration") +
+  theme(axis.title.y = element_blank(),  # Remove y-axis label
+        axis.text.y = element_blank(),   # Remove y-axis numbers
+        axis.ticks.y = element_blank()) + # Remove y-axis ticks
+  ggtitle("ProductRelated")
+
+
+grid.arrange(
+  plot_admin, plot_info, plot_product,
+  nrow = 1, ncol=3,
+  bottom =  textGrob("Figure 1: Duration Outliers", 
+                    gp = gpar(fontsize = 10)) # Add caption at the bottom
+)
+
+```
+
+Figure 1 shows the distributions of these duration variables on the horizontal axis. The figure shows strong right skewness and the presence of multiple outliers in each of the variables. To combat these, the top percentile of these variables will be removed outright, as it could be explained that these values come from internet sessions where the user went inactive and the duration still accumulated.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Calculate the cutoff for the top 1% for each variable
+cutoff_admin <- quantile(shop_2$Administrative_Duration, 0.99, na.rm = TRUE)
+cutoff_info <- quantile(shop_2$Informational_Duration, 0.99, na.rm = TRUE)
+cutoff_product <- quantile(shop_2$ProductRelated_Duration, 0.99, na.rm = TRUE)
+
+# Filter the data frame to exclude rows exceeding the cutoff for any variable
+shop_2 <- shop_2 %>%
+  filter(
+    Administrative_Duration <= cutoff_admin &
+    Informational_Duration <= cutoff_info &
+    ProductRelated_Duration <= cutoff_product
+  )
+
+shop_2$Session_Duration = shop_2$Administrative_Duration + shop_2$Informational_Duration + shop_2$ProductRelated_Duration
+
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(reshape2)
+
+skewed_data = shop_2 %>% dplyr::select(c("Administrative", "Administrative_Duration", "Informational", "Informational_Duration", "PageValues", "SpecialDay", "BounceRates", "ExitRates", "Session_Duration"))
+
+# Melt the data to long format
+skewed_data_long <- melt(skewed_data)
+
+# Plot density curves for each variable
+density_plot <- ggplot(skewed_data_long, aes(x = value, fill = variable)) +
+  geom_density(alpha = 0.6) +
+  facet_wrap(~ variable, scales = "free", ncol = 3) +  # Adjust ncol for grid shape
+  labs(title = "Density Curves for Each Variable", x = "Value", y = "Density", caption = "Figure 2: Density Curves") + 
+  theme_minimal() + 
+  theme(plot.caption = element_text(hjust = 0, vjust = 0, size = 10),
+        plot.title = element_text(size = 10), # Title size
+        axis.text.x = element_text(size = 6), # X-axis value size
+        strip.text = element_text(size = 6), # Individual plot title size
+        legend.position = "none") # Removes the legend for clarity
+
+# Display the plot
+density_plot
+
+```
+
+The initial summary statistics of the potential predictor variables also shows that many of them have the overwhelming majority of their values being zero. This can be seen as well by looking at the density curves for these variables in Figure 2. This could be cause for concern in fitting a regression model to this data because few values within these variables could distort the coefficients. Along with the variables already among the data, a variables called Session_Duration is also shown. This is the sum of each of the Duration variables and shows a more desirable distribution compared to each of the individual Duration variables. The distribution of this variable is actually quite similar to the ProductRelated_Duration distribution. For increasing the simplicity of the model without losing information, this variable will be used instead of the individual duration variables in the model.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+skewed_data$Revenue = shop_2$Revenue
+# Calculate correlations between each numerical variable and Revenue (binary)
+correlation_table <- sapply(skewed_data[, sapply(skewed_data, is.numeric)], 
+                            function(x) cor(x, skewed_data$Revenue))
+
+
+# Convert to data frame for easy viewing
+correlation_table_df <- data.frame(Variable = names(correlation_table), 
+                                   Correlation_with_PurchaseMade = correlation_table,
+                                   row.names=NULL) %>% arrange(Correlation_with_PurchaseMade)
+
+
+# Print the correlation table
+kable(correlation_table_df, caption="Table 1: Correlations with Purchase Made") %>%
+  kable_styling(full_width = FALSE, position="center", font_size = 6)
+```
+
+Of these variables, the PageValues variable exhibits the largest correlation to the response variable of 0.502. These is indicitive of this variable possibly being a significant predictor of the response.
+
+Due to the intense right skewness of these variables, the variables Administrative, Informational, and ProductRelated are used to engineer three binary variables to indicate whether pages were visited in these categories during the session. These are named Administrative_binary, Informational_binary, and ProductRelated_binary. The ProductRelated_binary variable isn't used because there are only 38 cases where this variable is false in this data set. All of the correlations between the numerical predictor variables are also measured and there is little to no correlation found between them with the exception of BounceRates and ExitRates with a correlation of 0.913. Because this could be problematic in the model, and because the BounceRates variable is much more skewed than the ExitRates variable, the BounceRates variable will be dropped.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Engineering binary variables for model
+shop_2$Administrative_binary = ifelse(shop_2$Administrative == 0, FALSE, TRUE)
+shop_2$Informational_binary = ifelse(shop_2$Informational == 0, FALSE, TRUE)
+shop_2 = shop_2 %>% dplyr::select(-c("BounceRates"))
+# Select only categorical variables from shop_2
+shop_2$VisitorType = ifelse(shop_2$VisitorType == "New_Visitor", "New", 
+                            ifelse(shop_2$VisitorType == "Returning_Visitor", "Returning",
+                                   "Other"))
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+library(RColorBrewer)
+categorical_vars <- shop_2 %>% dplyr::select(c("Month" ,"VisitorType", "Weekend", "Administrative_binary", "Informational_binary", "Browser", "Region", "TrafficType", "OperatingSystems"))
+cat_vars_names = names(categorical_vars)
+
+# Create a list to store plots
+plots <- list()
+
+# Loop through each categorical variable and create a bar plot of proportions
+for (cat_var in cat_vars_names) {
+  p <- ggplot(shop_2, aes_string(x = cat_var, fill = "Revenue")) +
+    geom_bar(position = "dodge") +  # Use "fill" to plot proportions
+    theme_minimal() +
+    labs(y="Proportion") +
+    scale_fill_manual(values = brewer.pal(8, "Dark2")) +  # Choose color palette
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5),
+          axis.title.x = element_text(size=10),
+          legend.position = "none")  # Remove legend
+  plots[[cat_var]] <- p
+}
+
+# Arrange plots in a grid (adjust rows/columns as needed)
+# Add a caption to the grid of plots
+grid_with_caption <- arrangeGrob(
+  grobs = plots,                # Pass the list of plots
+  ncol = 3,                     # Number of columns in the grid
+  bottom = textGrob(            # Add a caption at the bottom
+    "Figure 3: Categorical Distribution (Green = Purchase Not Made, Orange = Purchase Made)", 
+    gp = gpar(fontsize = 8)
+  )
+)
+
+grid.arrange(grid_with_caption)
+```
+
+Figure 3 shows the categorical variables and how they are distributed based on purchase made or not. If a purchase is not made, the bar is green. If a purchase is made, the bar is orange. Overall, there are much more web sessions that end in a purchase not being made than one being made. There also appear to be overall trends in number of sessions occuring in the months of March, May, and November as well as more purchases being made in those months as well. It seems more sessions in general don't include visits to Informational pages and similar amounts of session include a visit to Administrative pages. Also more purchase-ending sessions seem to happen when Administrative pages are visited opposed to not. It is also seen in each of the variables Browser, Region, TrafficType, and OperatingSystems that the majority of sessions occur with the lower numbered types. Because of this, and the fact that the data will need to be split to train the data, the types for each of the variables Browser, TrafficType, and OperatingSystems that have a very small proportion of the values equal to them, will be classified together as type "Other". 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+shop_2$Browser = ifelse(shop_2$Browser %in% c("1", "2", "4", "5"), shop_2$Browser, "Other") %>% as.factor()
+
+shop_2$OperatingSystems = ifelse(shop_2$OperatingSystems %in% c("5", "6", "7", "8"), "Other", shop_2$OperatingSystems) %>% as.factor()
+
+shop_2$TrafficType = ifelse(shop_2$TrafficType %in% c("7", "12", "14", "15", "16", "17", "18", "19"), "Other", shop_2$TrafficType) %>% as.factor()
+
+```
+
+
+```{r Categorical Correlations, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+# Select only categorical variables from shop_2
+categorical_vars <- shop_2 %>% dplyr::select(c("Month" ,"VisitorType", "Weekend", "Administrative_binary", "Informational_binary", "Revenue", "Browser", "Region", "TrafficType", "OperatingSystems"))
+# Rename the 'Revenue' column to 'Purchase_Made'
+categorical_vars <- categorical_vars %>%
+  rename(PurchaseMade = Revenue)
+
+
+# Create a matrix to store Cramer's V values
+n <- ncol(categorical_vars)
+cramers_v_matrix <- matrix(NA, nrow = n, ncol = n)
+colnames(cramers_v_matrix) <- colnames(categorical_vars)
+rownames(cramers_v_matrix) <- colnames(categorical_vars)
+
+# Calculate Cramer's V for each pair of categorical variables
+for (i in 1:n) {
+  for (j in i:n) {
+    if (i == j) {
+      cramers_v_matrix[i, j] <- 1  # Set diagonal to 1 for same variable
+    } else {
+      # Calculate Cramer's V for variable pairs and store it in the matrix
+      cramers_v_matrix[i, j] <- cramers_v_matrix[j, i] <- assocstats(table(categorical_vars[[i]], categorical_vars[[j]]))$cramer
+    }
+  }
+}
+
+# Round values to 4 decimal places
+cramers_v_matrix <- round(cramers_v_matrix, 4)
+
+# Display the matrix with kable
+kable(cramers_v_matrix, caption = "Table 2: Cramér's V Correlations") %>%
+  kable_styling(full_width = FALSE, position = "center")
+
+```
+
+The Cramér's V correlations between the categorical predictor variables and the Purchase Made response variable show no strong correlations between the predictors and response variables. The largest of any of the correlations is 0.4622 between Browser and OperatingSystems variables. This is not strong enough to justify dropping either variable at this time. 
+
+### Fitting and Testing the Model
+
+After exploring the data and making sure that using them in the models is appropriate, the data set is split into training and testing sets to fit an initial model. The initial model will contain the variables not dropped in data exploration, as well as the transformed and engineered variables.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+shop_2 = shop_2 %>% dplyr::select(-c("Administrative", "Informational", "ProductRelated_Duration", "Administrative_Duration", "Informational_Duration"))
+set.seed(1234)
+train_ind = sample(1:nrow(shop_2), 0.75*nrow(shop_2), replace=FALSE)
+train = shop_2[train_ind,]
+test = shop_2[-train_ind,]
+test_no_revenue = test %>% dplyr::select(-c("Revenue"))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+full_mod = glm(Revenue~., data=train, family=binomial)
+red_mod = glm(Revenue~ExitRates + PageValues + Month + TrafficType + Weekend + Session_Duration + Administrative_binary, data=train, family=binomial)
+#summary(full_mod)
+
+#anova(red_mod, full_mod, test="Chisq")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#Overall proportion in data - use as initial threshold
+threshold <- mean(train$Revenue)
+
+preds.tr <- predict.glm(full_mod, type="response")
+pred.tr.resp <- preds.tr > threshold #convert probs to binary
+pred.tr.table <- table(pred.tr.resp, train$Revenue) #columns are observed
+#pred.tr.table
+
+#Sensitivity, specificity, and accuracy
+
+#pred.tr.table[2,2]/sum(pred.tr.table[,2]); pred.tr.table[1,1]/sum(pred.tr.table[,1]); mean(pred.tr.resp == train$Revenue)
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#Find the optimal threshold
+library(pROC)
+rocfit <- roc(train$Revenue, preds.tr)
+metrics <- rocfit$sensitivities + rocfit$specificities
+max.metric.ind <- which(metrics == max(metrics))
+opt.threshold <- rocfit$thresholds[max.metric.ind]
+#opt.threshold 
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+pred.tr.resp <- preds.tr > opt.threshold #convert probs to binary
+pred.tr.table <- table(pred.tr.resp, train$Revenue) #columns are observed
+#Sensitivity, specificity, and accuracy
+
+#pred.tr.table[2,2]/sum(pred.tr.table[,2]); pred.tr.table[1,1]/sum(pred.tr.table[,1]); mean(pred.tr.resp == train$Revenue)
+
+#threshold #Original proportion
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+newdat <- test_no_revenue #VERY LAZY
+preds.te <- predict.glm(full_mod, newdata=test_no_revenue, type="response")
+pred.te.resp <- preds.te>opt.threshold #convert probs to binary, pi0=0.5
+pred.te.table <- table(pred.te.resp, test$Revenue) #columns are observed
+#pred.te.table
+#Sensitivity, specificity, and accuracy
+#pred.te.table[2,2]/sum(pred.te.table[,2]); pred.te.table[1,1]/sum(pred.te.table[,1]); mean(pred.te.resp == test$Revenue)
+
+#Overall proportion in data
+#mean(test$Revenue)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(glmnet)
+#Convert training data to matrix format, required for the package
+xx <- model.matrix(Revenue~., train)
+yy <- train$Revenue #packages requires this to be numeric
+
+#Fit the lasso logistic regression
+#alpha=1 gives lasso (alpha=0 gives ridge)
+#Can change the model measurement. Using AUC here:
+lasso.out <- cv.glmnet(xx, yy, family="binomial", alpha=1, type.measure="class")
+
+#coef(lasso.out, s=lasso.out$lambda.min)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+threshold = opt.threshold
+# Training
+#Set up the Lasso model and evaluate training
+mod.lasso <- glm(Revenue~.-SpecialDay, data=train, family=binomial)
+preds.tr.lasso <- predict.glm(mod.lasso, type="response")
+pred.tr.lasso <- preds.tr.lasso > threshold #convert probs to binary
+pred.tr.table.lasso <- table(pred.tr.lasso, train$Revenue) #columns are observed
+#Sensitivity, specificity, and accuracy
+
+#pred.tr.table.lasso[2,2]/sum(pred.tr.table.lasso[,2]) # Sensitivity
+#pred.tr.table.lasso[1,1]/sum(pred.tr.table.lasso[,1]) # Specificity
+#mean(pred.tr.lasso == train$Revenue) # Accuracy
+#anova(mod.lasso, full_mod, test="Chisq") # P-value of 0.8132
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Testing 
+test_no_revenue = test %>% dplyr::select(-c("Revenue"))
+
+preds.te.lasso <- predict(mod.lasso, test_no_revenue, type="response")
+pred.te.lasso <- preds.te.lasso > threshold #convert probs to binary
+pred.te.table.lasso <- table(pred.te.lasso, test$Revenue) #columns are observed
+#Sensitivity, specificity, and accuracy
+```
+
+Using the training data to test the performance of the initial model with the data it was built on, sensitivity, specificity, and accuracy measures of *0.7992593* , *0.8361685* , and *0.8306272* were found, respectively. All three of these values are very respectable. The initial threshold used was the mean of the Purchase Made variable, which for this training data is about *0.1519*. After the initial testing was done, different threshold values were used to find which one would give the largest decision metric. The decision metric chosen was the sum of the sensitivity and specificity, because it is important to have high overall rates of classifying the sessions correctly as those resulting in a purchase and those resulting not in a purchase. The optimal threshold received with the training data was *0.1449*. This is slightly lower than the initial threshold and yields similar sensitivity, specificity, and accuracy measures of *0.8118519*, *0.8270086*, and *0.8247331*, respectively.
+
+Once the optimal threshold was found the testing data was then used with the initial model to further test the predictive power with data that the model wasn't trained on. These predictions yielded sensitivity, specificity, and accuracy measures of *0.8230277*, *0.8236457*, and *0.823549*, respectively. These are quite similar to the same measures received using the training data and are indicative of a powerful predictive model. However, even though this model is powerful, it could also be useful to see if there is a way to simplify the model without losing too much predictive power and avoid over-fitting or noise variables.
+
+Using a lasso logistic regression ends up getting rid of the SpecialDay variable. This model resulted in the following measures in Table 3 when the testing data was used to predict whether a purchase was made.
+
+| Table 3 | Measurement |
+|---------|-------------|
+| Sensitivity | 0.8251599 |
+| Specificity | 0.8232503 |
+| Accuracy | 0.8235490 |
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+tab = matrix(c(pred.te.table.lasso[2,2]/sum(pred.te.table.lasso[,2]),
+               pred.te.table.lasso[1,1]/sum(pred.te.table.lasso[,1]),
+               mean(pred.te.lasso == test$Revenue)), ncol=1, nrow=3)
+colnames(tab) = c("Measurement")
+rownames(tab) = c("Sensitivity", "Specificity", "Accuracy")
+
+# Display the matrix with kable
+kable(tab, caption = "Table 3: Final Model Measurements") %>%
+  kable_styling(full_width = FALSE, position = "center")
+
+```
+
+These measurements are practically the same as the results from the initial model and were gathered from a more slightly more simplistic model. A Chi-Squared test of the final model compared to the initial model gives a P-value of about 0.9701, suggesting that there is not enough evidence to deem the initial model preferred over the lasso regression model.
+
+### Conclusion
+
+Overall, the goal of this analysis was to find a model with appropriate variables to predict whether a given internet session will result in an online purchase being made. The model found gives an accuracy of prediction of roughly 82 percent, which is very desirable. The one concerning thing about the nature of the data is how many of the variables displayed a very strong right skewness in their distributions. However, given the measurements received from the final model, it is reasonable to conclude that the model is powerful and effective.
